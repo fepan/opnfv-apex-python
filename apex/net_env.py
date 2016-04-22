@@ -117,10 +117,10 @@ class NetworkSettings:
         if network == ADMIN_NETWORK:
             self._config_ip(network, 'provisioner_ip', 1)
             self._config_ip_range(network=network, setting='dhcp_range',
-                                  start_offset=1, count=8)
+                                  start_offset=1, count=9)
             self._config_ip_range(network=network,
                                   setting='introspection_range',
-                                  start_offset=10, count=8)
+                                  start_offset=10, count=9)
         elif network == PUBLIC_NETWORK:
             self._config_ip(network, 'provisioner_ip', 1)
             self._config_ip_range(network=network,
