@@ -165,6 +165,8 @@ class NetworkSettings:
         for network in self.enabled_network_list:
             for key, value in self.settings_obj[network].items():
                 bash_str += "{}_{}={}\n".format(network, key, value)
+        bash_str += "enabled_network_list='{}'\n"\
+                    .format(' '.join(self.enabled_network_list))
         if path:
             with open(path, 'w') as file:
                 file.write(bash_str)
