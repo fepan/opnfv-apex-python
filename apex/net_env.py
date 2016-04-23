@@ -11,7 +11,7 @@
 import yaml
 import logging
 import ipaddress
-import apex.ip_utils as ip_utils
+from . import ip_utils
 
 
 ADMIN_NETWORK = 'admin_network'
