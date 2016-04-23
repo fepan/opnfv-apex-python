@@ -133,8 +133,8 @@ def get_interface(nic, address_family=4):
         logging.info("found interface {} ip: {}".format(nic, match.group()))
         return ipaddress.ip_interface(match.group())
     else:
-        logging.warning("interface ip not found! ip address output:\n{}"
-                        .format(output))
+        logging.info("interface ip not found! ip address output:\n{}"
+                     .format(output))
         return None
 
 
