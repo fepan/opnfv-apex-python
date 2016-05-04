@@ -1,5 +1,5 @@
 ##############################################################################
-# Copyright (c) 2016 Feng Pan (fpan@redhat.com)
+# Copyright (c) 2016 Feng Pan (fpan@redhat.com) and others.
 #
 # All rights reserved. This program and the accompanying materials
 # are made available under the terms of the Apache License, Version 2.0
@@ -21,10 +21,20 @@ STORAGE_NETWORK = 'storage_network'
 API_NETWORK = 'api_network'
 OPNFV_NETWORK_TYPES = [ADMIN_NETWORK, PRIVATE_NETWORK, PUBLIC_NETWORK,
                        STORAGE_NETWORK, API_NETWORK]
-net_isolation_enabled = True
 
 
 class NetworkSettings:
+    """
+    This class parses APEX network settings yaml file into an object. It
+    generates or detects all missing fields for deployment.
+
+    The resulting object will be used later to generate network environment file
+    as well as configuring post deployment networks.
+
+    Currently the parsed object is dumped into a bash global definition file
+    for deploy.sh consumption. This object will later be used directly as
+    deployment script move to python.
+    """
     def __init__(self, filename, network_isolation):
         with open(filename, 'r') as network_settings_file:
             self.settings_obj = yaml.load(network_settings_file)
@@ -33,6 +43,11 @@ class NetworkSettings:
             self._validate_input()
 
     def _validate_input(self):
+        """
+        Validates the network settings file and populates all fields.
+
+        NetworkSettingsException will be raised if validation fails.
+        """
         if ADMIN_NETWORK not in self.settings_obj or \
                 self.settings_obj[ADMIN_NETWORK].get('enabled') != True:
             raise NetworkSettingsException("You must enable admin_network "
@@ -52,7 +67,7 @@ class NetworkSettings:
                     self._config_required_settings(network)
                     self._config_ip_range(network=network,
                                           setting='usable_ip_range',
-                                          start_offset=20, end_offset=22)
+                                          start_offset=21, end_offset=21)
                     self._config_optional_settings(network)
                     self.enabled_network_list.append(network)
                 else:
@@ -63,7 +78,16 @@ class NetworkSettings:
                              "admin_network".format(network))
 
     def _config_required_settings(self, network):
-        """Configures either CIDR or bridged_interface setting"""
+        """
+        Configures either CIDR or bridged_interface setting
+
+        cidr takes precedence if both cidr and bridged_interface are specified
+        for a given network.
+
+        When using bridged_interface, we will detect network setting on the
+        given NIC in the system. The resulting config in settings object will
+        be an ipaddress.network object, replacing the NIC name.
+        """
         cidr = self.settings_obj[network].get('cidr')
         nic_name = self.settings_obj[network].get('bridged_interface')
 
@@ -99,6 +123,14 @@ class NetworkSettings:
 
     def _config_ip_range(self, network, setting, start_offset=None,
                          end_offset=None, count=None):
+        """
+        Configures IP range for a given setting.
+
+        If the setting is already specified, no change will be made.
+
+        The spec for start_offset, end_offset and count are identical to
+        ip_utils.get_ip_range.
+        """
         ip_range = self.settings_obj[network].get(setting)
         interface = self.settings_obj[network].get('bridged_interface')
 
@@ -113,14 +145,36 @@ class NetworkSettings:
 
         logging.info("{}_{}: {}".format(network, setting, ip_range))
 
+    def _config_ip(self, network, setting, offset):
+        """
+        Configures IP for a given setting.
+
+        If the setting is already specified, no change will be made.
+
+        The spec for offset is identical to ip_utils.get_ip
+        """
+        ip = self.settings_obj[network].get(setting)
+        interface = self.settings_obj[network].get('bridged_interface')
+
+        if not ip:
+            cidr = self.settings_obj[network].get('cidr')
+            ip = ip_utils.get_ip(offset, cidr, interface)
+            self.settings_obj[network][setting] = ip
+
+        logging.info("{}_{}: {}".format(network, setting, ip))
+
     def _config_optional_settings(self, network):
+        """
+        Configures optional settings, currently only applicable to admin_network
+        and public_network.
+        """
         if network == ADMIN_NETWORK:
             self._config_ip(network, 'provisioner_ip', 1)
             self._config_ip_range(network=network, setting='dhcp_range',
-                                  start_offset=1, count=9)
+                                  start_offset=2, count=9)
             self._config_ip_range(network=network,
                                   setting='introspection_range',
-                                  start_offset=10, count=9)
+                                  start_offset=11, count=9)
         elif network == PUBLIC_NETWORK:
             self._config_ip(network, 'provisioner_ip', 1)
             self._config_ip_range(network=network,
@@ -129,6 +183,12 @@ class NetworkSettings:
             self._config_gateway(network)
 
     def _config_gateway(self, network):
+        """
+        Configures gateway setting for a given network.
+
+        If cidr is specified, we always use the first address in the address
+        space for gateway. Otherwise, we detect the system gateway.
+        """
         gateway = self.settings_obj[network].get('gateway')
         interface = self.settings_obj[network].get('bridged_interface')
 
@@ -146,27 +206,20 @@ class NetworkSettings:
 
         logging.info("{}_gateway: {}".format(network, gateway))
 
-    def _config_ip(self, network, setting, offset):
-        ip = self.settings_obj[network].get(setting)
-        interface = self.settings_obj[network].get('bridged_interface')
-
-        if not ip:
-            cidr = self.settings_obj[network].get('cidr')
-            ip = ip_utils.get_ip(offset, cidr, interface)
-            self.settings_obj[network][setting] = ip
-
-        logging.info("{}_{}: {}".format(network, setting, ip))
-
-    def dump_yaml(self):
-        print(yaml.dump(self.settings_obj, default_flow_style=False))
 
     def dump_bash(self, path=None):
+        """
+        Prints settings for bash consumption.
+
+        If optional path is provided, bash string will be written to the file
+        instead of stdout.
+        """
         bash_str = ''
         for network in self.enabled_network_list:
             for key, value in self.settings_obj[network].items():
                 bash_str += "{}_{}={}\n".format(network, key, value)
-        bash_str += "enabled_network_list='{}'\n"\
-                    .format(' '.join(self.enabled_network_list))
+        bash_str += "enabled_network_list='{}'\n" \
+            .format(' '.join(self.enabled_network_list))
         if path:
             with open(path, 'w') as file:
                 file.write(bash_str)
