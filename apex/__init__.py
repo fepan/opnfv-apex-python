@@ -9,3 +9,14 @@
 
 
 from .net_env import NetworkSettings
+from .net_env import ADMIN_NETWORK, PUBLIC_NETWORK, STORAGE_NETWORK, API_NETWORK, PRIVATE_NETWORK, OPNFV_NETWORK_TYPES
+import logging
+
+logger = logging.getLogger('apex')
+fh = logging.FileHandler('/var/log/apex/apex.log')
+fh.setLevel(logging.DEBUG)
+ch = logging.StreamHandler()
+ch.setLevel(logging.ERROR)
+
+logger.addHandler(fh)
+logger.addHandler(ch)
